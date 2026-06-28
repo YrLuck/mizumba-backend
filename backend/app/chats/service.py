@@ -337,6 +337,115 @@ def remove_chat_member(
     return build_chat_detail(session, chat, current_user)
 
 
+def update_group_chat(
+    session: Session,
+    *,
+    chat_id: UUID,
+    current_user: User,
+    title: str | None,
+    avatar_url: str | None,
+) -> ChatDetail:
+    chat = get_chat_by_id(session, chat_id)
+    if not chat:
+        raise not_found("Chat not found")
+    if chat.type == ChatType.DIRECT:
+        raise bad_request("Cannot update direct chat")
+    require_chat_admin(session, chat_id, current_user)
+
+    if title is not None:
+        chat.title = title.strip()
+    if avatar_url is not None:
+        chat.avatar_url = avatar_url.strip() or None
+    chat.updated_at = datetime.now(UTC)
+    session.add(chat)
+    session.commit()
+    session.refresh(chat)
+    return build_chat_detail(session, chat, current_user)
+
+
+def delete_group_chat(
+    session: Session,
+    *,
+    chat_id: UUID,
+    current_user: User,
+) -> None:
+    chat = get_chat_by_id(session, chat_id)
+    if not chat:
+        raise not_found("Chat not found")
+    if chat.type == ChatType.DIRECT:
+        raise bad_request("Cannot delete direct chat")
+
+    member = require_chat_member(session, chat_id, current_user)
+    if member.role != ChatMemberRole.OWNER:
+        raise forbidden("Only the chat owner can delete the group")
+
+    messages = session.exec(select(Message).where(Message.chat_id == chat_id)).all()
+    for msg in messages:
+        session.delete(msg)
+    members = session.exec(select(ChatMember).where(ChatMember.chat_id == chat_id)).all()
+    for m in members:
+        session.delete(m)
+    session.delete(chat)
+    session.commit()
+
+
+def leave_group_chat(
+    session: Session,
+    *,
+    chat_id: UUID,
+    current_user: User,
+) -> None:
+    chat = get_chat_by_id(session, chat_id)
+    if not chat:
+        raise not_found("Chat not found")
+    if chat.type == ChatType.DIRECT:
+        raise bad_request("Cannot leave direct chat")
+
+    member = get_chat_member(session, chat_id, current_user.id)
+    if not member:
+        raise not_found("You are not a member of this chat")
+    if member.role == ChatMemberRole.OWNER:
+        raise bad_request("Owner cannot leave. Transfer ownership or delete the group.")
+
+    session.delete(member)
+    chat.updated_at = datetime.now(UTC)
+    session.add(chat)
+    session.commit()
+
+
+def change_member_role(
+    session: Session,
+    *,
+    chat_id: UUID,
+    current_user: User,
+    user_id: UUID,
+    role: ChatMemberRole,
+) -> ChatDetail:
+    chat = get_chat_by_id(session, chat_id)
+    if not chat:
+        raise not_found("Chat not found")
+    if chat.type == ChatType.DIRECT:
+        raise bad_request("Cannot change roles in direct chat")
+
+    current_member = require_chat_member(session, chat_id, current_user)
+    if current_member.role != ChatMemberRole.OWNER:
+        raise forbidden("Only the chat owner can change member roles")
+
+    target_member = get_chat_member(session, chat_id, user_id)
+    if not target_member:
+        raise not_found("Chat member not found")
+    if target_member.user_id == current_user.id:
+        raise bad_request("Cannot change your own role")
+    if role == ChatMemberRole.OWNER:
+        raise bad_request("Cannot transfer ownership via role change")
+
+    target_member.role = role
+    session.add(target_member)
+    session.commit()
+    session.refresh(chat)
+    return build_chat_detail(session, chat, current_user)
+
+
 def mark_chat_read(
     session: Session,
     *,

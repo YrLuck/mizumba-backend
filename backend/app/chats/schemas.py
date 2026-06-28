@@ -14,13 +14,20 @@ class DirectChatCreate(BaseModel):
 
 class GroupChatCreate(BaseModel):
     title: str = Field(min_length=2, max_length=100)
-    member_ids: list[UUID] = Field(min_length=1)
+    member_ids: list[UUID] = Field(default_factory=list)
     avatar_url: str | None = Field(default=None, max_length=500)
 
+
+class GroupChatUpdate(BaseModel):
+    title: str | None = Field(default=None, min_length=2, max_length=100)
+    avatar_url: str | None = None
 
 class ChatMemberAdd(BaseModel):
     user_id: UUID
     role: ChatMemberRole = ChatMemberRole.MEMBER
+
+class ChatMemberRoleUpdate(BaseModel):
+    role: ChatMemberRole
 
 
 class ChatReadRequest(BaseModel):

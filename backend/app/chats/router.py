@@ -7,19 +7,25 @@ from app.auth.dependencies import get_current_user
 from app.chats.schemas import (
     ChatDetail,
     ChatMemberAdd,
+    ChatMemberRoleUpdate,
     ChatReadRequest,
     ChatSummary,
     DirectChatCreate,
     GroupChatCreate,
+    GroupChatUpdate,
 )
 from app.chats.service import (
     add_chat_member,
+    change_member_role,
     create_direct_chat,
     create_group_chat,
+    delete_group_chat,
     get_chat_detail,
+    leave_group_chat,
     list_user_chats,
     mark_chat_read,
     remove_chat_member,
+    update_group_chat,
 )
 from app.core.database import get_session
 from app.messages.schemas import MessageCreate, MessagePublic
@@ -62,6 +68,34 @@ def create_group(
     )
 
 
+@router.patch("/{chat_id}", response_model=ChatDetail)
+def update_chat(
+    chat_id: UUID,
+    payload: GroupChatUpdate,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+) -> ChatDetail:
+    return update_group_chat(session, chat_id=chat_id, current_user=current_user, title=payload.title, avatar_url=payload.avatar_url)
+
+
+@router.delete("/{chat_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_chat(
+    chat_id: UUID,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+) -> None:
+    delete_group_chat(session, chat_id=chat_id, current_user=current_user)
+
+
+@router.post("/{chat_id}/leave", status_code=status.HTTP_204_NO_CONTENT)
+def leave_chat(
+    chat_id: UUID,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+) -> None:
+    leave_group_chat(session, chat_id=chat_id, current_user=current_user)
+
+
 @router.get("/{chat_id}", response_model=ChatDetail)
 def get_chat(
     chat_id: UUID,
@@ -85,6 +119,17 @@ def add_member(
         user_id=payload.user_id,
         role=payload.role,
     )
+
+
+@router.patch("/{chat_id}/members/{user_id}", response_model=ChatDetail)
+def update_member_role(
+    chat_id: UUID,
+    user_id: UUID,
+    payload: ChatMemberRoleUpdate,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+) -> ChatDetail:
+    return change_member_role(session, chat_id=chat_id, current_user=current_user, user_id=user_id, role=payload.role)
 
 
 @router.delete("/{chat_id}/members/{user_id}", response_model=ChatDetail)

@@ -283,6 +283,86 @@ def list_channel_posts(
     return [_post_to_public(session, post) for post in posts if post]
 
 
+def delete_channel(
+    session: Session,
+    *,
+    channel_id: UUID,
+    current_user: User,
+) -> None:
+    channel = get_channel_by_id(session, channel_id)
+    if not channel:
+        raise not_found("Channel not found")
+    subscriber = get_channel_subscriber(session, channel_id, current_user.id)
+    if not subscriber or subscriber.role != ChannelSubscriberRole.OWNER:
+        raise forbidden("Only the channel owner can delete the channel")
+
+    posts = session.exec(select(ChannelPost).where(ChannelPost.channel_id == channel_id)).all()
+    for post in posts:
+        session.delete(post)
+    subscribers = session.exec(select(ChannelSubscriber).where(ChannelSubscriber.channel_id == channel_id)).all()
+    for sub in subscribers:
+        session.delete(sub)
+    session.delete(channel)
+    session.commit()
+
+
+def delete_channel_post(
+    session: Session,
+    *,
+    channel_id: UUID,
+    post_id: UUID,
+    current_user: User,
+) -> None:
+    channel = get_channel_by_id(session, channel_id)
+    if not channel:
+        raise not_found("Channel not found")
+    post = session.get(ChannelPost, post_id)
+    if not post or post.channel_id != channel_id:
+        raise not_found("Post not found")
+
+    subscriber = get_channel_subscriber(session, channel_id, current_user.id)
+    is_admin = subscriber and subscriber.role in {ChannelSubscriberRole.OWNER, ChannelSubscriberRole.ADMIN}
+    is_author = post.author_id == current_user.id
+    if not is_admin and not is_author:
+        raise forbidden("Not allowed to delete this post")
+
+    now = datetime.now(UTC)
+    post.deleted_at = now
+    session.add(post)
+    channel.updated_at = now
+    session.add(channel)
+    session.commit()
+
+
+def update_channel_post(
+    session: Session,
+    *,
+    channel_id: UUID,
+    post_id: UUID,
+    current_user: User,
+    text: str | None,
+    image_url: str | None,
+) -> ChannelPostPublic:
+    channel = get_channel_by_id(session, channel_id)
+    if not channel:
+        raise not_found("Channel not found")
+    post = session.get(ChannelPost, post_id)
+    if not post or post.channel_id != channel_id or post.deleted_at:
+        raise not_found("Post not found")
+    if post.author_id != current_user.id:
+        raise forbidden("Only the post author can edit")
+
+    if text is not None:
+        post.text = text.strip()
+    if image_url is not None:
+        post.image_url = image_url.strip() or None
+    post.updated_at = datetime.now(UTC)
+    session.add(post)
+    session.commit()
+    session.refresh(post)
+    return _post_to_public(session, post)
+
+
 def create_channel_post(
     session: Session,
     *,

@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, status
 from sqlmodel import Session
 
 from app.auth.dependencies import get_current_user
@@ -10,18 +10,22 @@ from app.channels.schemas import (
     ChannelDetail,
     ChannelPostCreate,
     ChannelPostPublic,
+    ChannelPostUpdate,
     ChannelSummary,
     ChannelUpdate,
 )
 from app.channels.service import (
     create_channel,
     create_channel_post,
+    delete_channel,
+    delete_channel_post,
     get_channel_detail,
     list_channel_posts,
     list_channels,
     subscribe_to_channel,
     unsubscribe_from_channel,
     update_channel,
+    update_channel_post,
 )
 from app.core.database import get_session
 from app.users.models import User
@@ -86,6 +90,15 @@ def subscribe(
     return subscribe_to_channel(session, channel_id=channel_id, current_user=current_user)
 
 
+@router.delete("/{channel_id}", status_code=status.HTTP_204_NO_CONTENT)
+def remove_channel(
+    channel_id: UUID,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+) -> None:
+    delete_channel(session, channel_id=channel_id, current_user=current_user)
+
+
 @router.delete("/{channel_id}/subscribe", response_model=ChannelSummary)
 def unsubscribe(
     channel_id: UUID,
@@ -108,6 +121,27 @@ def get_posts(
         current_user=current_user,
         limit=limit,
     )
+
+
+@router.patch("/{channel_id}/posts/{post_id}", response_model=ChannelPostPublic)
+def edit_post(
+    channel_id: UUID,
+    post_id: UUID,
+    payload: ChannelPostUpdate,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+) -> ChannelPostPublic:
+    return update_channel_post(session, channel_id=channel_id, post_id=post_id, current_user=current_user, text=payload.text, image_url=payload.image_url)
+
+
+@router.delete("/{channel_id}/posts/{post_id}", status_code=status.HTTP_204_NO_CONTENT)
+def remove_post(
+    channel_id: UUID,
+    post_id: UUID,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+) -> None:
+    delete_channel_post(session, channel_id=channel_id, post_id=post_id, current_user=current_user)
 
 
 @router.post("/{channel_id}/posts", response_model=ChannelPostPublic)

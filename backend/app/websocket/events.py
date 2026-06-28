@@ -13,7 +13,7 @@ class WebSocketEvent(BaseModel):
 
 class MessageSendPayload(BaseModel):
     chat_id: UUID
-    text: str = Field(min_length=1, max_length=4000)
+    text: str = Field(default='', max_length=4000)
     type: MessageType = MessageType.TEXT
     attachment_url: str | None = Field(default=None, max_length=500)
     attachment_mime_type: str | None = Field(default=None, max_length=120)
